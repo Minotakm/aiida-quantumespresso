@@ -302,6 +302,7 @@ class PdosWorkChain(ProtocolMixin, WorkChain):
         spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_BOTH',
             message='both the DOS and PROJWFC sub process failed')
 
+        spec.expose_outputs(PwBaseWorkChain, namespace='scf')
         spec.expose_outputs(PwBaseWorkChain, namespace='nscf')
         spec.expose_outputs(DosCalculation, namespace='dos')
         spec.expose_outputs(ProjwfcCalculation, namespace='projwfc')
