@@ -303,7 +303,8 @@ def parse_xml_post_6_2(xml):
 
         num_k_points = band_structure['nks']
         num_electrons = band_structure['nelec']
-        num_atomic_wfc = band_structure['num_of_atomic_wfc']
+        # In schema v240411 (QE v7.3.1), the `number_of_atomic_wfc` is moved to the `atomic_structure` tag as an attribute
+        num_atomic_wfc = band_structure.get('num_of_atomic_wfc', None) or outputs['atomic_structure']['@num_of_atomic_wfc']
         num_bands = band_structure.get('nbnd', None)
         num_bands_up = band_structure.get('nbnd_up', None)
         num_bands_down = band_structure.get('nbnd_dw', None)
@@ -568,6 +569,7 @@ def parse_xml_post_6_2(xml):
 
 def parse_step_to_trajectory(trajectory, data, skip_structure=False):
     """."""
+    
     from ..pw import fix_sirius_xml_prints # Do we really need that here? If we use it in other parts of the parser maybe we put it in the beginning? 
 
     if 'scf_conv' in data and 'n_scf_steps' in data['scf_conv']:
@@ -600,11 +602,14 @@ def parse_step_to_trajectory(trajectory, data, skip_structure=False):
                 trajectory[key_alt].append(total_energy[key] * CONSTANTS.hartree_to_ev)
 
     if 'forces' in data and '$' in data['forces']:
-        forces = np.array(data['forces']['$'])
+        
+        forces = fix_sirius_xml_prints(np.array(data['forces']['$']))
         dimensions = data['forces']['@dims']  # Like [3, 2], should be reversed to reshape the forces array
+        forces = forces * (CONSTANTS.ry_to_ev*2 )/CONSTANTS.bohr_to_ang
         trajectory['forces'].append(fix_sirius_xml_prints(forces.reshape(dimensions[::-1])))
-
+        
     if 'stress' in data and '$' in data['stress']:
         stress = np.array(data['stress']['$'])
         dimensions = data['stress']['@dims']  # Like [3, 3], should be reversed to reshape the stress array
+        stress = stress * CONSTANTS.au_gpa
         trajectory['stress'].append(fix_sirius_xml_prints(stress.reshape(dimensions[::-1])))

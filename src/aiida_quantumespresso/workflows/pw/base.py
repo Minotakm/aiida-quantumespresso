@@ -89,6 +89,8 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             message='The initialization calculation failed.')
         spec.exit_code(501, 'ERROR_IONIC_CONVERGENCE_REACHED_EXCEPT_IN_FINAL_SCF',
             message='Then ionic minimization cycle converged but the thresholds are exceeded in the final SCF.')
+        spec.exit_code(545, 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED_WITH_WARNING',
+            message='The electronic converge not reached with warning that the smearing is larger than the band gap.')
         spec.exit_code(710, 'WARNING_ELECTRONIC_CONVERGENCE_NOT_REACHED',
             message='The electronic minimization cycle did not reach self-consistency, but `scf_must_converge` '
                     'is `False` and/or `electron_maxstep` is 0.')
@@ -143,7 +145,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         if electronic_type not in [ElectronicType.METAL, ElectronicType.INSULATOR]:
             raise NotImplementedError(f'electronic type `{electronic_type}` is not supported.')
 
-        if spin_type not in [SpinType.NONE, SpinType.COLLINEAR]:
+        if spin_type not in [SpinType.NONE, SpinType.COLLINEAR, SpinType.SPIN_ORBIT]:
             raise NotImplementedError(f'spin type `{spin_type}` is not supported.')
 
         if initial_magnetic_moments is not None and spin_type is not SpinType.COLLINEAR:
@@ -193,7 +195,14 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             starting_magnetization = get_starting_magnetization(structure, pseudo_family, initial_magnetic_moments)
             parameters['SYSTEM']['starting_magnetization'] = starting_magnetization
             parameters['SYSTEM']['nspin'] = 2
-
+        
+        # HACK : to be able to run Spin Orbit calculations. Which are non collinear and we don't need nspin tag.
+        if spin_type is SpinType.SPIN_ORBIT:
+            starting_magnetization = get_starting_magnetization(structure, pseudo_family, initial_magnetic_moments)
+            parameters['SYSTEM']['starting_magnetization'] = starting_magnetization
+            parameters['SYSTEM']['noncolin'] = True
+            parameters['SYSTEM']['lspinorb'] = True
+            
         # If overrides are provided, they are considered absolute
         if overrides:
             parameter_overrides = overrides.get('pw', {}).get('parameters', {})
@@ -340,9 +349,10 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         Verify that the occupation of the last band is below a certain threshold, unless `occupations` was explicitly
         set to `fixed` in the input parameters. If this is violated, the calculation used too few bands and cannot be
-        trusted. The number of bands is increased and the calculation is restarted, using the charge density from the
-        previous calculation.
+        trusted. The number of bands is increased and the calculation is restarted from scratch. 
         """
+        #, using the charge density from the previous calculation. 
+        
         from aiida_quantumespresso.utils.bands import get_highest_occupied_band
 
         occupations = calculation.inputs.parameters.base.attributes.get('SYSTEM', {}).get('occupations', None)
@@ -376,10 +386,10 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             nbnd_new = nbnd_cur + max(int(nbnd_cur * self.defaults.delta_factor_nbnd), self.defaults.delta_minimum_nbnd)
             self.ctx.inputs.parameters['SYSTEM']['nbnd'] = nbnd_new
 
-            self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder)
+            #self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder) # Changed this to deal with the error of SIRIUS restart.
+            self.set_restart_type(RestartType.FROM_SCRATCH) 
             self.report(
-                f'Action taken: increased number of bands to {nbnd_new} and restarting from the previous charge '
-                'density.'
+                f'Action taken: increased number of bands to {nbnd_new} and restarting from scratch.'
             )
 
             return ProcessHandlerReport(True)
@@ -467,12 +477,19 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """Handle `ERROR_IONIC_INTERRUPTED_PARTIAL_TRAJECTORY` exit code.
 
         In this case the calculation got interrupted during an ionic optimization due to a problem that is likely
-        transient, so we can restart from the last output structure. Note that since the job got interrupted the charge
+        transient, so we can restart from the last output structure, if it exists. Note that since the job got interrupted the charge
         density and wave functions are likely corrupt so those cannot be used in the restart.
         """
-        self.ctx.inputs.structure = calculation.outputs.output_structure
-        self.set_restart_type(RestartType.FROM_SCRATCH)
-        self.report_error_handled(calculation, 'restarting from scratch from the last output structure')
+        if 'output_structure' in calculation.outputs:
+            # Restart from the output structure.
+            self.ctx.inputs.structure = calculation.outputs.output_structure
+            self.set_restart_type(RestartType.FROM_SCRATCH)
+            self.report_error_handled(calculation, 'restarting from scratch from the last output structure')
+        else:
+            # Output structure is missing, restart from scratch.
+            self.ctx.inputs.structure = calculation.inputs.structure
+            self.set_restart_type(RestartType.FROM_SCRATCH)
+            self.report_error_handled(calculation, 'The calculation did not produce an output structure, restarting from scratch')
         return ProcessHandlerReport(True)
 
     @process_handler(
@@ -530,7 +547,8 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         self.ctx.inputs.structure = calculation.outputs.output_structure
 
-        self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder)
+        #self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder) # Same as before. 
+        self.set_restart_type(RestartType.FROM_SCRATCH)
         self.report_error_handled(calculation, action)
         return ProcessHandlerReport(True)
 
@@ -552,7 +570,8 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         self.ctx.inputs.structure = calculation.outputs.output_structure
         action = 'no ionic convergence but clean shutdown: restarting from scratch but using output structure.'
 
-        self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder)
+        #self.set_restart_type(RestartType.FROM_CHARGE_DENSITY, calculation.outputs.remote_folder) # Same as before 
+        self.set_restart_type(RestartType.FROM_SCRATCH)
         self.report_error_handled(calculation, action)
         return ProcessHandlerReport(True)
 
@@ -618,7 +637,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """Handle `ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED` error.
 
         Decrease the mixing beta and fully restart from the previous calculation.
-        """
+        """        
         factor = self.defaults.delta_factor_mixing_beta
         mixing_beta = self.ctx.inputs.parameters.get('ELECTRONS', {}).get('mixing_beta', self.defaults.qe.mixing_beta)
         mixing_beta_new = mixing_beta * factor
@@ -628,6 +647,29 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         self.set_restart_type(RestartType.FULL, calculation.outputs.remote_folder)
         self.report_error_handled(calculation, action)
+        return ProcessHandlerReport(True)
+
+    @process_handler(priority=415, exit_codes=[
+        PwCalculation.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED_WITH_WARNING,
+    ])
+    def handle_electronic_convergence_not_reached_with_warning(self, calculation):
+        """Handle `ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED_WITH_WARNING` error.
+
+        Decrease the smearing and fully restart from the previous calculation.
+        """      
+        
+        current_params = self.ctx.inputs.parameters
+
+        degauss = current_params.get('SYSTEM', {}).get('degauss')
+        degauss_new = max(degauss * 0.5, 0.01)
+        self.ctx.inputs.parameters['SYSTEM']['degauss'] = degauss_new
+
+        # TODO: Check if we want to restart the calculation from the last computed structure if 
+        # is exists.
+        self.set_restart_type(RestartType.FULL, calculation.outputs.remote_folder)
+        action = f'Reduced degauss from {degauss} to {degauss_new} and restarting from the last calculation'
+        self.report_error_handled(calculation, action)
+
         return ProcessHandlerReport(True)
 
     @process_handler(priority=420, exit_codes=[
@@ -654,6 +696,29 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         self.ctx.inputs.structure = calculation.outputs.output_structure
         action = 'initialised the structure again and restarting from scratch.'
+
+        self.set_restart_type(RestartType.FROM_SCRATCH)
+        self.report_error_handled(calculation, action)
+        return ProcessHandlerReport(True)
+
+    @process_handler(priority=605, exit_codes=[
+        PwCalculation.exit_codes.ERROR_NUMBER_OF_BANDS_MORE_THAN_PWs,
+    ])
+    def handle_nbands_more_than_pw_warning(self, calculation):
+        """Handle `ERROR_NUMBER_OF_BANDS_MORE_THAN_PWs`
+
+        Use the structure from the last relaxation step as the starting point and restart with
+        with the 0.8*nbds.
+        """
+
+        nbnd = self.ctx.inputs.parameters.get('SYSTEM', {}).get('nbnd')
+        nbnd_new = int(nbnd * 0.8)
+        self.ctx.inputs.parameters['SYSTEM']['nbnd'] = nbnd_new
+        
+        action = (
+            f'CRASH because of the number of bands being less that the PWs: reduced the number of bands {nbnd} to {nbnd_new}'
+            'restarting from scratch'
+        )
 
         self.set_restart_type(RestartType.FROM_SCRATCH)
         self.report_error_handled(calculation, action)

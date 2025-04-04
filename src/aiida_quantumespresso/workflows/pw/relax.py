@@ -183,6 +183,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         self.ctx.current_structure = self.inputs.structure
         self.ctx.current_number_of_bands = None
         self.ctx.iteration = 0
+        self.ctx.exceeded_iterations = False # Has not exceeded the number of iterations, flag. 
 
         self.ctx.relax_inputs = AttributeDict(self.exposed_inputs(PwBaseWorkChain, namespace='base_relax'))
         self.ctx.relax_inputs.pw.parameters = self.ctx.relax_inputs.pw.parameters.get_dict()
@@ -203,8 +204,9 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_init_relax(self):
         """Return whether an initial relaxation should be run."""
+        
         return 'base_init_relax' in self.inputs
-
+        
     def run_init_relax(self):
         """Run the `PwBaseWorkChain` to run an initial relaxation."""
         inputs = AttributeDict(self.exposed_inputs(PwBaseWorkChain, namespace='base_init_relax'))
@@ -222,7 +224,10 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         """Inspect the result of the initial relax `PwBaseWorkChain`."""
         workchain = self.ctx.base_init_relax_workchain
 
-        if not workchain.is_finished_ok:
+        # Change this to accomodate an exception of the exit status. 
+        acceptable_statuses = ['ERROR_IONIC_CONVERGENCE_REACHED_EXCEPT_IN_FINAL_SCF']
+
+        if workchain.is_failed and workchain.exit_status not in PwBaseWorkChain.get_exit_statuses(acceptable_statuses):
             self.report(f'final scf PwBaseWorkChain failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_INIT_RELAX
 
@@ -257,7 +262,8 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         # Stop if the maximum number of meta iterations has been reached
         if self.ctx.iteration == self.inputs.max_meta_convergence_iterations.value:
             self.report('Maximum number of meta convergence iterations reached.')
-            return self.exit_codes.ERROR_MAX_ITERATIONS_EXCEEDED
+            self.ctx.exceeded_iterations = True
+            return False
 
         base_relax_workchain = self.ctx.base_relax_workchains[-1]
 
@@ -339,7 +345,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
 
             self.report('`vc-relax` or `relax` PwBaseWorkChain finished successfully but without output structure')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_RELAX
-
+        
         # Set relaxed structure as input structure for next iteration
         self.ctx.current_structure = structure
         self.ctx.current_number_of_bands = workchain.outputs.output_parameters.get_dict()['number_of_bands']
@@ -351,6 +357,10 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
 
         if self.ctx.relax_inputs.pw.parameters['CONTROL']['calculation'] != 'scf':
             self.out('output_structure', final_relax_workchain.outputs.output_structure)
+            
+        # Check if the number of iterations has been exceeded
+        if self.ctx.exceeded_iterations:
+            return self.exit_codes.ERROR_MAX_ITERATIONS_EXCEEDED
 
         self.out_many(self.exposed_outputs(final_relax_workchain, PwBaseWorkChain))
 

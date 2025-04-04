@@ -735,7 +735,9 @@ class BasePwCpInputGenerator(CalcJob):
                 ) from exception
 
         if 'DIRECT_MINIMIZATION' in input_params:
-            namelists_toprint.append('DIRECT_MINIMIZATION')
+            namelists_toprint.insert(
+                namelists_toprint.index('ELECTRONS') + 1, 'DIRECT_MINIMIZATION'
+            )
 
         inputfile = ''
         for namelist_name in namelists_toprint:

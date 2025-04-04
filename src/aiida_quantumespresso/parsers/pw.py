@@ -267,11 +267,11 @@ class PwParser(BaseParser):
                                                                                 {}).get('scf_must_converge', True)
             electron_maxstep = self.node.inputs.parameters.base.attributes.get('ELECTRONS',
                                                                                {}).get('electron_maxstep', 1)
-
             if electron_maxstep == 0 or not scf_must_converge:
                 return self.exit_codes.WARNING_ELECTRONIC_CONVERGENCE_NOT_REACHED
             else:
                 return self.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED
+
 
     def validate_dynamics(self, trajectory, parameters, logs):
         """Analyze problems that are specific to `dynamics` type calculations: i.e. `md` and `vc-md`."""
@@ -287,7 +287,17 @@ class PwParser(BaseParser):
         ionic_convergence_reached = 'ERROR_IONIC_CONVERGENCE_NOT_REACHED' not in logs.error
         bfgs_history_failure = 'ERROR_IONIC_CYCLE_BFGS_HISTORY_FAILURE' in logs.error
         maximum_ionic_steps_reached = 'ERROR_MAXIMUM_IONIC_STEPS_REACHED' in logs.warning
+        warning_smearing_larger_than_band_gap = 'WARNING_SMEARING_LARGER_THAN_BAND_GAP' in logs.warning
+        
         final_scf = parameters.get('final_scf', False)
+
+        
+        if not ionic_convergence_reached and not electronic_convergence_reached and warning_smearing_larger_than_band_gap:
+            return self.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED_WITH_WARNING
+        
+        # The electronic self-consistency cycle failed before reaching ionic convergence
+        elif not ionic_convergence_reached and not electronic_convergence_reached:
+            return self.exit_codes.ERROR_IONIC_CYCLE_ELECTRONIC_CONVERGENCE_NOT_REACHED
 
         # The electronic self-consistency cycle failed before reaching ionic convergence
         if not ionic_convergence_reached and not electronic_convergence_reached:

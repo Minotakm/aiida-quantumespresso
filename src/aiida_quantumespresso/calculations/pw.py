@@ -163,7 +163,10 @@ class PwCalculation(BasePwCpInputGenerator):
                      'and there is not enough space allocated for radial FFT.'))
         spec.exit_code(543, 'ERROR_SYMMETRY_OPERATIONS_NOT_SATISFIED',
             message='The variable cell optimization caused the symmetry operations to not be satisfied.')
-
+        spec.exit_code(544, 'ERROR_NUMBER_OF_BANDS_MORE_THAN_PWs',
+            message='The number of bands is more than the number of the plane waves.')
+        spec.exit_code(545, 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED_WITH_WARNING',
+            message='The electronic converge not reached with warning that the smearing is larger than the band gap.')
         # Strong warnings about calculation results, but something tells us that you're ok with that
         spec.exit_code(710, 'WARNING_ELECTRONIC_CONVERGENCE_NOT_REACHED',
             message='The electronic minimization cycle did not reach self-consistency, but `scf_must_converge` '

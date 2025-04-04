@@ -258,10 +258,12 @@ def detect_important_message(logs, line):
             'Error in routine broyden': 'ERROR_BROYDEN_FACTORIZATION',
             'Not enough space allocated for radial FFT: try restarting with a larger cell_factor': 'ERROR_RADIAL_FFT_SIGNIFICANT_VOLUME_CONTRACTION',
             REG_ERROR_NPOOLS_TOO_HIGH: 'ERROR_NPOOLS_TOO_HIGH',
-            'some of the original symmetry operations not satisfied': 'ERROR_SYMMETRY_OPERATIONS_NOT_SATISFIED'
+            'some of the original symmetry operations not satisfied': 'ERROR_SYMMETRY_OPERATIONS_NOT_SATISFIED',
+            'more bands than PWs!': 'ERROR_NUMBER_OF_BANDS_MORE_THAN_PWs',
         },
         'warning': {
             'Warning:': None,
+            'smearing is larger than the electronic band-gap': 'WARNING_SMEARING_LARGER_THAN_BAND_GAP',
             'DEPRECATED:': None,
         }
     }
