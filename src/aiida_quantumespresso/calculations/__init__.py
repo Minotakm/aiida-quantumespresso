@@ -773,6 +773,14 @@ class BasePwCpInputGenerator(CalcJob):
                     'namelists using the NAMELISTS inside the `settings` input node'
                 ) from exception
 
+        # Quantum ESPRESSO's NLCG direct free-energy minimization is activated by the mere
+        # presence of the `&DIRECT_MINIMIZATION` namelist. It is not part of the automatic
+        # per-calculation namelist set, so include it whenever the user supplies it in
+        # `parameters` (otherwise it would be dropped here and then rejected below as an
+        # unexpected leftover namelist).
+        if 'DIRECT_MINIMIZATION' in input_params and 'DIRECT_MINIMIZATION' not in namelists_toprint:
+            namelists_toprint = list(namelists_toprint) + ['DIRECT_MINIMIZATION']
+
         inputfile = ''
         for namelist_name in namelists_toprint:
             inputfile += f'&{namelist_name}\n'

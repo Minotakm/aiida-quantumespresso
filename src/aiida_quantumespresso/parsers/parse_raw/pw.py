@@ -951,6 +951,14 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
         if len(logs.error) == len(logs.warning) == 0:
             raise QEOutputParsingError('Parser cannot load basic info.')
 
+    # Quantum ESPRESSO's NLCG direct free-energy minimization (the `&DIRECT_MINIMIZATION`
+    # driver) begins with a short capped warm-up SCF that is deliberately not run to `conv_thr`
+    # ("convergence NOT achieved after N iterations") before NLCG takes over and a brief
+    # canonicalizing SCF finishes. If NLCG itself converged, the warm-up's non-convergence is
+    # expected and must not be reported as an electronic-convergence failure.
+    if 'MVP2 / nlcglib' in stdout and 'NLCG: convergence achieved' in stdout:
+        logs.error = [error for error in logs.error if error != 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED']
+
     # Remove duplicate log messages by turning it into a set. Then convert back to list as that is what is expected
     logs.error = list(set(logs.error))
     logs.warning = list(set(logs.warning))
