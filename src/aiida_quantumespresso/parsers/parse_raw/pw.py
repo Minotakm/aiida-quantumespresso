@@ -956,8 +956,16 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
     # ("convergence NOT achieved after N iterations") before NLCG takes over and a brief
     # canonicalizing SCF finishes. If NLCG itself converged, the warm-up's non-convergence is
     # expected and must not be reported as an electronic-convergence failure.
-    if 'MVP2 / nlcglib' in stdout and 'NLCG: convergence achieved' in stdout:
-        logs.error = [error for error in logs.error if error != 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED']
+    # Count-matched: every NLCG invocation (one per ionic step in a relax) must report one of
+    # its convergence messages -- "NLCG: convergence achieved (...)" for the slope-tolerance
+    # and energy-stagnation exits, or "... -- convergence achieved" for the noise-floor exits.
+    # A whole-file substring test would wrongly clear the error when NLCG converged at one
+    # ionic step but failed at a later one, and would miss the noise-floor exit messages.
+    nlcg_starts = stdout.count('NLCG: direct free-energy minimization')
+    if nlcg_starts > 0:
+        nlcg_converged = sum(1 for line in stdout.splitlines() if 'NLCG:' in line and 'convergence achieved' in line)
+        if nlcg_converged == nlcg_starts:
+            logs.error = [error for error in logs.error if error != 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED']
 
     # Remove duplicate log messages by turning it into a set. Then convert back to list as that is what is expected
     logs.error = list(set(logs.error))
