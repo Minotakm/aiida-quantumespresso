@@ -964,9 +964,18 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
     # The canonicalizing SCF finish must also have converged: pw.x continues past a failed
     # finish with a warning, but the resulting state is not self-consistent and the printed
     # forces/stress are unreliable -- keep the convergence error in that case.
+    # A stalled minimization is also a success when its rescue converged: NLCG hands its
+    # density to a capped SCF and pw.x prints "NLCG: the continuing SCF reached
+    # self-consistency" -- an exit branch mutually exclusive with the "convergence achieved"
+    # ones (electrons.f90), so counting it keeps the per-invocation match exact.
     nlcg_starts = stdout.count('NLCG: direct free-energy minimization')
     if nlcg_starts > 0:
-        nlcg_converged = sum(1 for line in stdout.splitlines() if 'NLCG:' in line and 'convergence achieved' in line)
+        nlcg_converged = sum(
+            1
+            for line in stdout.splitlines()
+            if ('NLCG:' in line and 'convergence achieved' in line)
+            or 'NLCG: the continuing SCF reached self-consistency' in line
+        )
         nlcg_finish_failed = 'NLCG: WARNING - canonicalizing SCF did not converge' in stdout
         if nlcg_finish_failed:
             logs.warning.append('NLCG: canonicalizing SCF finish did not converge; forces/stress unreliable')
