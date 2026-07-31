@@ -125,9 +125,15 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             message='[deprecated] The calculation failed with an unidentified unrecoverable error.',
         )
         spec.exit_code(
-            310, 'ERROR_KNOWN_UNRECOVERABLE_FAILURE', message='The calculation failed with a known unrecoverable error.'
+            310,
+            'ERROR_KNOWN_UNRECOVERABLE_FAILURE',
+            message='The calculation failed with a known unrecoverable error.',
         )
-        spec.exit_code(320, 'ERROR_INITIALIZATION_CALCULATION_FAILED', message='The initialization calculation failed.')
+        spec.exit_code(
+            320,
+            'ERROR_INITIALIZATION_CALCULATION_FAILED',
+            message='The initialization calculation failed.',
+        )
         spec.exit_code(
             501,
             'ERROR_IONIC_CONVERGENCE_REACHED_EXCEPT_IN_FINAL_SCF',
@@ -201,7 +207,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         meta_parameters = inputs.pop('meta_parameters')
         pseudo_family = inputs.pop('pseudo_family')
 
-        if spin_type is SpinType.SPIN_ORBIT and 'pseudo_family' not in (overrides, {}):
+        if spin_type is SpinType.SPIN_ORBIT and 'pseudo_family' not in (overrides or {}):
             pseudo_family = 'PseudoDojo/0.4/PBEsol/FR/standard/upf'
 
         natoms = len(structure.sites)
@@ -259,7 +265,11 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             parameters['SYSTEM'].pop('degauss')
             parameters['SYSTEM'].pop('smearing')
 
-        if spin_type in [SpinType.COLLINEAR, SpinType.SPIN_ORBIT, SpinType.NON_COLLINEAR]:
+        if spin_type in [
+            SpinType.COLLINEAR,
+            SpinType.SPIN_ORBIT,
+            SpinType.NON_COLLINEAR,
+        ]:
             magnetization = get_magnetization(
                 structure=structure,
                 z_valences={kind.name: pseudos[kind.name].z_valence for kind in structure.kinds},
