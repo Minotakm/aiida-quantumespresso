@@ -681,6 +681,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         exit_codes=[
             PwCalculation.exit_codes.ERROR_IONIC_CYCLE_ELECTRONIC_CONVERGENCE_NOT_REACHED,
             PwCalculation.exit_codes.ERROR_IONIC_CONVERGENCE_REACHED_FINAL_SCF_FAILED,
+            # NLCG rescue double failure: routed through the generic handler for now; a dedicated
+            # strategy (the same restart is unlikely to help) is still to be designed.
+            PwCalculation.exit_codes.ERROR_IONIC_CYCLE_NLCG_RESCUE_NOT_CONVERGED,
         ],
     )
     def handle_relax_recoverable_electronic_convergence_error(self, calculation):
@@ -709,6 +712,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         priority=410,
         exit_codes=[
             PwCalculation.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED,
+            # NLCG rescue double failure: routed through the generic handler for now; a dedicated
+            # strategy (the same restart is unlikely to help) is still to be designed.
+            PwCalculation.exit_codes.ERROR_NLCG_RESCUE_NOT_CONVERGED,
         ],
     )
     def handle_electronic_convergence_not_reached(self, calculation):

@@ -203,6 +203,8 @@ class PwParser(BaseParser):
             'number_of_bands',
             'number_of_k_points',
             'final_scf',
+            'nlcg_rescues',
+            'nlcg_rescues_converged',
         ]
 
         for key in keys:
@@ -253,6 +255,9 @@ class PwParser(BaseParser):
             if electron_maxstep == 0 or not scf_must_converge:
                 return self.exit_codes.WARNING_ELECTRONIC_CONVERGENCE_NOT_REACHED
 
+            if 'ERROR_NLCG_RESCUE_NOT_CONVERGED' in logs['error']:
+                return self.exit_codes.ERROR_NLCG_RESCUE_NOT_CONVERGED
+
             return self.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED
 
     def validate_dynamics(self, trajectory, parameters, logs):
@@ -269,10 +274,13 @@ class PwParser(BaseParser):
         ionic_convergence_reached = 'ERROR_IONIC_CONVERGENCE_NOT_REACHED' not in logs.error
         bfgs_history_failure = 'ERROR_IONIC_CYCLE_BFGS_HISTORY_FAILURE' in logs.error
         maximum_ionic_steps_reached = 'ERROR_MAXIMUM_IONIC_STEPS_REACHED' in logs.warning
+        nlcg_rescue_failed = 'ERROR_NLCG_RESCUE_NOT_CONVERGED' in logs.error
         final_scf = parameters.get('final_scf', False)
 
         # The electronic self-consistency cycle failed before reaching ionic convergence
         if not ionic_convergence_reached and not electronic_convergence_reached:
+            if nlcg_rescue_failed:
+                return self.exit_codes.ERROR_IONIC_CYCLE_NLCG_RESCUE_NOT_CONVERGED
             return self.exit_codes.ERROR_IONIC_CYCLE_ELECTRONIC_CONVERGENCE_NOT_REACHED
 
         # Ionic convergence was not reached because maximum number of steps was exceeded
@@ -295,6 +303,9 @@ class PwParser(BaseParser):
         if not electronic_convergence_reached:
             if final_scf:
                 return self.exit_codes.ERROR_IONIC_CONVERGENCE_REACHED_FINAL_SCF_FAILED
+
+            if nlcg_rescue_failed:
+                return self.exit_codes.ERROR_IONIC_CYCLE_NLCG_RESCUE_NOT_CONVERGED
 
             return self.exit_codes.ERROR_IONIC_CYCLE_ELECTRONIC_CONVERGENCE_NOT_REACHED
 

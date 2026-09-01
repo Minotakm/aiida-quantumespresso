@@ -969,6 +969,7 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
     # self-consistency" -- an exit branch mutually exclusive with the "convergence achieved"
     # ones (electrons.f90), so counting it keeps the per-invocation match exact.
     nlcg_starts = stdout.count('NLCG: direct free-energy minimization')
+    nlcg_converged = 0
     if nlcg_starts > 0:
         nlcg_converged = sum(
             1
@@ -976,11 +977,28 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
             if ('NLCG:' in line and 'convergence achieved' in line)
             or 'NLCG: the continuing SCF reached self-consistency' in line
         )
+
+    # Rescue counters, queryable from `output_parameters`: emitted whenever the NLCG driver was
+    # enabled in the input, so 0/0 distinguishes "enabled but never triggered" from the key being
+    # absent (driver not enabled at all).
+    if 'DIRECT_MINIMIZATION' in input_parameters:
+        parsed_data['nlcg_rescues'] = nlcg_starts
+        parsed_data['nlcg_rescues_converged'] = nlcg_converged
+
+    if nlcg_starts > 0:
         nlcg_finish_failed = 'NLCG: WARNING - canonicalizing SCF did not converge' in stdout
         if nlcg_finish_failed:
             logs.warning.append('NLCG: canonicalizing SCF finish did not converge; forces/stress unreliable')
         if nlcg_converged == nlcg_starts and not nlcg_finish_failed:
             logs.error = [error for error in logs.error if error != 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED']
+        elif nlcg_converged < nlcg_starts:
+            # An invocation ended in neither convergence message: NLCG stalled or aborted AND the
+            # capped SCF continuation from its density failed too, so no self-consistent state
+            # exists. Tag it on top of the generic error so the workchain can tell "mixing failed
+            # but NLCG saved it" from "NLCG itself gave up", where restarting with the same knobs
+            # is futile. A failed canonicalizing finish after a *converged* NLCG (nlcg_finish_failed
+            # with matching counts) deliberately stays a generic convergence error.
+            logs.error.append('ERROR_NLCG_RESCUE_NOT_CONVERGED')
 
     # Remove duplicate log messages by turning it into a set. Then convert back to list as that is what is expected
     logs.error = list(set(logs.error))
