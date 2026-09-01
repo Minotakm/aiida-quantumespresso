@@ -130,6 +130,12 @@ class PwCalculation(BasePwCpInputGenerator):
             'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED',
             message='The electronic minimization cycle did not reach self-consistency.',
         )
+        spec.exit_code(
+            411,
+            'ERROR_NLCG_RESCUE_NOT_CONVERGED',
+            message='The electronic minimization cycle did not reach self-consistency: the NLCG rescue did not '
+            'converge and the SCF continuation from its density failed as well.',
+        )
 
         spec.exit_code(
             461, 'ERROR_DEXX_IS_NEGATIVE', message='The code failed with negative dexx in the exchange calculation.'
@@ -185,6 +191,12 @@ class PwCalculation(BasePwCpInputGenerator):
             'ERROR_IONIC_CONVERGENCE_REACHED_FINAL_SCF_FAILED',
             message='The ionic minimization cycle converged, but electronic convergence was not reached in the '
             'final SCF.',
+        )
+        spec.exit_code(
+            512,
+            'ERROR_IONIC_CYCLE_NLCG_RESCUE_NOT_CONVERGED',
+            message='The electronic minimization cycle failed during an ionic minimization cycle: the NLCG rescue '
+            'did not converge and the SCF continuation from its density failed as well.',
         )
         spec.exit_code(
             520,

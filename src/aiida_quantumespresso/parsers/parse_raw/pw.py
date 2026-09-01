@@ -85,7 +85,10 @@ def reduce_symmetries(parsed_parameters, parsed_structure, logger):
     cell_transpose_inv = np.linalg.inv(cell_transpose)
     possible_symmetries = get_symmetry_mapping()
 
-    for symmetry_type in ['symmetries', 'lattice_symmetries']:  # crystal vs. lattice symmetries
+    for symmetry_type in [
+        'symmetries',
+        'lattice_symmetries',
+    ]:  # crystal vs. lattice symmetries
         if symmetry_type in list(parsed_parameters.keys()):
             try:
                 old_symmetries = parsed_parameters[symmetry_type]
@@ -113,7 +116,11 @@ def reduce_symmetries(parsed_parameters, parsed_structure, logger):
                         rotation_cart_old = np.dot(cell_transpose, np.dot(rotation_cryst, cell_transpose_inv))
 
                         inversion = possible_symmetries[index]['inversion']
-                        if not are_matrices_equal(rotation_cart_old, rotation_cart_new, swap_sign_matrix_b=inversion):
+                        if not are_matrices_equal(
+                            rotation_cart_old,
+                            rotation_cart_new,
+                            swap_sign_matrix_b=inversion,
+                        ):
                             logger.error(
                                 f'Mapped rotation matrix {rotation_cart_new} does not match the original rotation {rotation_cart_old}'
                             )
@@ -253,10 +260,16 @@ def get_symmetry_mapping():
 
     rotations = []
 
-    for key, value in zip(matrices_name[: len(transposed_matrices_cartesian)], transposed_matrices_cartesian):
+    for key, value in zip(
+        matrices_name[: len(transposed_matrices_cartesian)],
+        transposed_matrices_cartesian,
+    ):
         rotations.append({'name': key, 'matrix': np.transpose(value), 'inversion': False})
 
-    for key, value in zip(matrices_name[len(transposed_matrices_cartesian) :], transposed_matrices_cartesian):
+    for key, value in zip(
+        matrices_name[len(transposed_matrices_cartesian) :],
+        transposed_matrices_cartesian,
+    ):
         rotations.append({'name': key, 'matrix': np.transpose(value), 'inversion': True})
 
     return rotations
@@ -713,7 +726,10 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
                     else:
                         raise KeyError(f'could not find and parse the line with `{marker}`')
 
-                    for key, value in [['energy', energy], ['energy_accuracy', energy_acc]]:
+                    for key, value in [
+                        ['energy', energy],
+                        ['energy_accuracy', energy_acc],
+                    ]:
                         trajectory_data.setdefault(key, []).append(value)
                         parsed_data[key + units_suffix] = default_energy_units
                     # TODO: decide units for magnetization. now bohr mag/cell
@@ -969,6 +985,7 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
     # self-consistency" -- an exit branch mutually exclusive with the "convergence achieved"
     # ones (electrons.f90), so counting it keeps the per-invocation match exact.
     nlcg_starts = stdout.count('NLCG: direct free-energy minimization')
+    nlcg_converged = 0
     if nlcg_starts > 0:
         nlcg_converged = sum(
             1
@@ -976,11 +993,19 @@ def parse_stdout(stdout, input_parameters, parser_options=None, parsed_xml=None,
             if ('NLCG:' in line and 'convergence achieved' in line)
             or 'NLCG: the continuing SCF reached self-consistency' in line
         )
+
+    if 'DIRECT_MINIMIZATION' in input_parameters:
+        parsed_data['nlcg_rescues'] = nlcg_starts
+        parsed_data['nlcg_rescues_converged'] = nlcg_converged
+
+    if nlcg_starts > 0:
         nlcg_finish_failed = 'NLCG: WARNING - canonicalizing SCF did not converge' in stdout
         if nlcg_finish_failed:
             logs.warning.append('NLCG: canonicalizing SCF finish did not converge; forces/stress unreliable')
         if nlcg_converged == nlcg_starts and not nlcg_finish_failed:
             logs.error = [error for error in logs.error if error != 'ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED']
+        elif nlcg_converged < nlcg_starts:
+            logs.error.append('ERROR_NLCG_RESCUE_NOT_CONVERGED')
 
     # Remove duplicate log messages by turning it into a set. Then convert back to list as that is what is expected
     logs.error = list(set(logs.error))
